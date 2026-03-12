@@ -12,6 +12,18 @@ const { getAuth } = require("firebase-admin/auth");
 const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
 const ADMIN_EMAILS_SECRET = defineSecret("ADMIN_EMAILS");
 const ALLOWED_EMAILS_SECRET = defineSecret("ALLOWED_EMAILS");
+const PLAN_CONFIG = {
+  free: {
+    dailyLimit: 1,
+    supportsLength: false,
+    supportsEnglish: false,
+  },
+  plus: {
+    dailyLimit: 10,
+    supportsLength: true,
+    supportsEnglish: true,
+  },
+};
 
 
 // コスト暴発を抑える（必要なら調整）
@@ -58,6 +70,10 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function getPlanKey(value) {
+  return value === "plus" ? "plus" : "free";
+}
+
 function parseEmailList(secretParam, secretName) {
   const rawValue = secretParam.value();
   if (!rawValue) {
@@ -74,13 +90,29 @@ function parseEmailList(secretParam, secretName) {
       .map((email) => normalizeEmail(email))
       .filter(Boolean);
   } catch (error) {
-    logger.error(`${secretName} must be a JSON array of email addresses`, error);
-    return [];
+    logger.error(`${secretName} is not valid JSON array, trying fallback parsing`, error);
+    return rawValue
+      .split(/[\n,]/)
+      .map((email) => normalizeEmail(email.replace(/[[\]"]/g, "")))
+      .filter(Boolean);
   }
 }
 
 function getEmailSet(secretParam, secretName) {
   return new Set(parseEmailList(secretParam, secretName));
+}
+
+function buildPlanStatus(plan, dailyCount) {
+  const config = PLAN_CONFIG[plan] || PLAN_CONFIG.free;
+  return {
+    plan,
+    dailyCount,
+    dailyLimit: config.dailyLimit,
+    remainingCount: Math.max(config.dailyLimit - dailyCount, 0),
+    supportsLength: config.supportsLength,
+    supportsEnglish: config.supportsEnglish,
+    lastResetAt: getDayKeyJST(),
+  };
 }
 
 function allowlist(req, res, next) {
@@ -108,64 +140,155 @@ function getDayKeyJST() {
   ).padStart(2, "0")}`;
 }
 
-async function rateLimitDailyFirestore(req, res, next) {
+function getDayKeyFromResetAt(value) {
+  if (!value) return "";
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  let dateValue = null;
+  if (typeof value?.toDate === "function") {
+    dateValue = value.toDate();
+  } else if (value instanceof Date) {
+    dateValue = value;
+  } else {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      dateValue = parsed;
+    }
+  }
+
+  if (!dateValue) return "";
+  const jst = new Date(dateValue.getTime() + 9 * 60 * 60 * 1000);
+  return `${jst.getUTCFullYear()}-${String(jst.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    jst.getUTCDate()
+  ).padStart(2, "0")}`;
+}
+
+async function loadUserProfile(req, res, next) {
   try {
     const uid = req.user?.uid;
     const email = normalizeEmail(req.user?.email);
-    if (!uid) return res.status(401).json({ error: "認証情報がありません" });
-    // ✅ 管理者は回数制限をスキップ
-    const adminSet = getEmailSet(ADMIN_EMAILS_SECRET, "ADMIN_EMAILS");
-    if (adminSet.has(email)) {
+    if (!uid) {
+      return res.status(401).json({ error: "認証情報がありません" });
+    }
+
+    const userRef = db.collection("users").doc(uid);
+    const currentDay = getDayKeyJST();
+    const snap = await userRef.get();
+
+    if (!snap.exists) {
+      const plan = "free";
+      await userRef.set({
+        uid,
+        email,
+        plan,
+        dailyCount: 0,
+        lastResetAt: currentDay,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      req.userProfile = {
+        ref: userRef,
+        ...buildPlanStatus(plan, 0),
+        lastResetAt: currentDay,
+      };
       return next();
     }
-    const dayKey = getDayKeyJST();
-    const userRef = db.collection("usage").doc(`${uid}_${dayKey}`);
-    const globalRef = db.collection("global_usage").doc(dayKey);
+
+    const data = snap.data() || {};
+    const plan = getPlanKey(data.plan);
+    const lastResetDay = getDayKeyFromResetAt(data.lastResetAt);
+    const shouldReset = lastResetDay !== currentDay;
+    const dailyCount = shouldReset ? 0 : Math.max(Number(data.dailyCount) || 0, 0);
+    const updates = {};
+
+    if (plan !== data.plan) {
+      updates.plan = plan;
+    }
+    if (email && email !== normalizeEmail(data.email)) {
+      updates.email = email;
+    }
+    if (shouldReset) {
+      updates.dailyCount = 0;
+      updates.lastResetAt = currentDay;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      updates.updatedAt = new Date().toISOString();
+      await userRef.set(updates, { merge: true });
+    }
+
+    req.userProfile = {
+      ref: userRef,
+      ...buildPlanStatus(plan, dailyCount),
+      lastResetAt: shouldReset ? currentDay : lastResetDay || currentDay,
+    };
+    next();
+  } catch (error) {
+    logger.error("loadUserProfile failed", error);
+    return res.status(500).json({ error: "ユーザー情報の取得に失敗しました" });
+  }
+}
+
+async function enforceDailyUsageLimit(req, res, next) {
+  try {
+    const uid = req.user?.uid;
+    const email = normalizeEmail(req.user?.email);
+    const userRef = req.userProfile?.ref || db.collection("users").doc(uid);
+    const currentDay = getDayKeyJST();
+    let nextStatus = null;
 
     await db.runTransaction(async (tx) => {
-      const userSnap = await tx.get(userRef);
-      const globalSnap = await tx.get(globalRef);
+      const snap = await tx.get(userRef);
+      const data = snap.data() || {};
+      const plan = getPlanKey(data.plan);
+      const config = PLAN_CONFIG[plan] || PLAN_CONFIG.free;
+      const lastResetDay = getDayKeyFromResetAt(data.lastResetAt);
+      const currentCount = lastResetDay === currentDay ? Math.max(Number(data.dailyCount) || 0, 0) : 0;
 
-      const userCount = userSnap.exists ? userSnap.data().count || 0 : 0;
-      const globalCount = globalSnap.exists ? globalSnap.data().count || 0 : 0;
+      if (currentCount >= config.dailyLimit) {
+        throw new Error("PLAN_LIMIT");
+      }
 
-      if (globalCount >= DAILY_LIMIT_GLOBAL) throw new Error("GLOBAL_LIMIT");
-      if (userCount >= DAILY_LIMIT_PER_USER) throw new Error("USER_LIMIT");
-
+      const nextCount = currentCount + 1;
       tx.set(
         userRef,
         {
           uid,
           email,
-          dayKey,
-          count: userCount + 1,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          plan,
+          dailyCount: nextCount,
+          lastResetAt: currentDay,
+          updatedAt: new Date().toISOString(),
         },
         { merge: true }
       );
 
-      tx.set(
-        globalRef,
-        {
-          dayKey,
-          count: globalCount + 1,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
+      nextStatus = {
+        ref: userRef,
+        ...buildPlanStatus(plan, nextCount),
+        lastResetAt: currentDay,
+      };
     });
 
+    req.userProfile = nextStatus;
     next();
-  } catch (e) {
-    if (e.message === "GLOBAL_LIMIT") {
-      return res.status(429).json({ error: "本日の全体利用上限に達しました" });
+  } catch (error) {
+    if (error.message === "PLAN_LIMIT") {
+      const dailyLimit = req.userProfile?.dailyLimit || PLAN_CONFIG.free.dailyLimit;
+      return res.status(429).json({ error: `本日の利用上限（${dailyLimit}回）に達しました` });
     }
-    if (e.message === "USER_LIMIT") {
-      return res.status(429).json({ error: "本日の利用上限（10回）に達しました" });
-    }
-    console.error(e);
-    return res.status(500).json({ error: "回数制限チェックでエラー" });
+    logger.error("enforceDailyUsageLimit failed", error);
+    return res.status(500).json({ error: "利用回数チェックに失敗しました" });
   }
+}
+
+function requireEnglishFeature(req, res, next) {
+  if (!req.userProfile?.supportsEnglish) {
+    return res.status(403).json({ error: "plusプランで利用できます" });
+  }
+  next();
 }
 
 // ====== Express App ======
@@ -173,6 +296,8 @@ const app = express();
 app.use(
   cors({
     origin: [
+      "http://127.0.0.1:5002",
+      "http://localhost:5002",
       "https://hoiku-letter-tool.web.app",
       "https://hoiku-letter-tool.firebaseapp.com",
     ],
@@ -181,11 +306,24 @@ app.use(
 app.use(express.json());
 
 // ====== API ======
+app.get("/me", requireAuth, allowlist, loadUserProfile, async (req, res) => {
+  return res.json({
+    plan: req.userProfile.plan,
+    dailyCount: req.userProfile.dailyCount,
+    lastResetAt: req.userProfile.lastResetAt,
+    dailyLimit: req.userProfile.dailyLimit,
+    remainingCount: req.userProfile.remainingCount,
+    supportsLength: req.userProfile.supportsLength,
+    supportsEnglish: req.userProfile.supportsEnglish,
+  });
+});
+
 app.post(
   "/hoiku-letter",
   requireAuth,
   allowlist,
-  rateLimitDailyFirestore,
+  loadUserProfile,
+  enforceDailyUsageLimit,
   async (req, res) => {
     try {
       const apiKey = OPENAI_API_KEY.value();
@@ -194,7 +332,7 @@ app.post(
       }
 
       const payload = req.body;
-      const { date, weather, group, name, event: activity, notes } = payload || {};
+      const { date, weather, group, name, event: activity, notes, length } = payload || {};
 
       const formatDate = (value, locale, options) => {
         if (!value) return "";
@@ -232,6 +370,13 @@ app.post(
       const mainEvent = activity || "本日の活動";
       const observation = (notes || "").trim() || "ゆったりと友だちと関わっていました";
       const weatherText = (weather || "").trim() || "穏やかな気候";
+      const lengthInstruction = req.userProfile?.supportsLength
+        ? {
+            short: "全体は短めにまとめる。",
+            normal: "全体は2〜3段落の標準的な長さにする。",
+            long: "やや詳しめに書くが、冗長にはしない。",
+          }[length] || "全体は2〜3段落の標準的な長さにする。"
+        : "全体は2〜3段落で、長くなりすぎない。";
 
    const messages = [
   {
@@ -251,7 +396,7 @@ app.post(
 7 説明調にせず、その場を一緒に見ているような描写にする。
 8 文の長さを揃えすぎず、まとめすぎない。
 9 入力にない事実や会話は創作しない（セリフは入力に明示されている場合のみ可）。
-10 全体は2〜3段落で、長くなりすぎない。
+10 ${lengthInstruction}
 
 入力情報:
 - 日付: ${formattedDateJa}
@@ -299,7 +444,16 @@ try {
   });
 }
 
-return res.json({ ja: parsed.ja || "" });
+return res.json({
+  ja: parsed.ja || "",
+  plan: req.userProfile.plan,
+  dailyCount: req.userProfile.dailyCount,
+  lastResetAt: req.userProfile.lastResetAt,
+  dailyLimit: req.userProfile.dailyLimit,
+  remainingCount: req.userProfile.remainingCount,
+  supportsLength: req.userProfile.supportsLength,
+  supportsEnglish: req.userProfile.supportsEnglish,
+});
 
     } catch (err) {
       console.error(err);
@@ -312,7 +466,8 @@ app.post(
   "/hoiku-letter-en",
   requireAuth,
   allowlist,
-  rateLimitDailyFirestore,
+  loadUserProfile,
+  requireEnglishFeature,
   async (req, res) => {
     try {
       const apiKey = OPENAI_API_KEY.value();
@@ -382,7 +537,16 @@ try {
 }
  
 
-      return res.json({ en: parsed.en || "" });
+      return res.json({
+        en: parsed.en || "",
+        plan: req.userProfile.plan,
+        dailyCount: req.userProfile.dailyCount,
+        lastResetAt: req.userProfile.lastResetAt,
+        dailyLimit: req.userProfile.dailyLimit,
+        remainingCount: req.userProfile.remainingCount,
+        supportsLength: req.userProfile.supportsLength,
+        supportsEnglish: req.userProfile.supportsEnglish,
+      });
     } catch (err) {
       console.error(err);
       return res.status(500).json({ error: "サーバー側でエラーが発生しました。" });
