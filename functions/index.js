@@ -12,6 +12,7 @@ const { getAuth } = require("firebase-admin/auth");
 const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
 const ADMIN_EMAILS_SECRET = defineSecret("ADMIN_EMAILS");
 const ALLOWED_EMAILS_SECRET = defineSecret("ALLOWED_EMAILS");
+const DEVELOPER_EMAIL = "goyuutouya510@gmail.com";
 const PLAN_CONFIG = {
   free: {
     dailyLimit: 1,
@@ -20,6 +21,11 @@ const PLAN_CONFIG = {
   },
   plus: {
     dailyLimit: 10,
+    supportsLength: true,
+    supportsEnglish: true,
+  },
+  unlimited: {
+    dailyLimit: null,
     supportsLength: true,
     supportsEnglish: true,
   },
@@ -74,6 +80,27 @@ function getPlanKey(value) {
   return value === "plus" ? "plus" : "free";
 }
 
+function getTestModeKey(value) {
+  return ["free", "plus", "unlimited"].includes(value) ? value : null;
+}
+
+function isDeveloperEmail(email) {
+  return normalizeEmail(email) === DEVELOPER_EMAIL;
+}
+
+function resolvePlanContext(email, data = {}) {
+  const basePlan = getPlanKey(data.plan);
+  const testMode = isDeveloperEmail(email) ? getTestModeKey(data.testMode) : null;
+  const effectivePlan = testMode || basePlan;
+
+  return {
+    basePlan,
+    testMode,
+    isTestMode: Boolean(testMode),
+    effectivePlan,
+  };
+}
+
 function parseEmailList(secretParam, secretName) {
   const rawValue = secretParam.value();
   if (!rawValue) {
@@ -108,7 +135,8 @@ function buildPlanStatus(plan, dailyCount) {
     plan,
     dailyCount,
     dailyLimit: config.dailyLimit,
-    remainingCount: Math.max(config.dailyLimit - dailyCount, 0),
+    remainingCount:
+      config.dailyLimit === null ? null : Math.max(config.dailyLimit - dailyCount, 0),
     supportsLength: config.supportsLength,
     supportsEnglish: config.supportsEnglish,
     lastResetAt: getDayKeyJST(),
@@ -197,14 +225,15 @@ async function loadUserProfile(req, res, next) {
     }
 
     const data = snap.data() || {};
-    const plan = getPlanKey(data.plan);
+    const planContext = resolvePlanContext(email, data);
+    const plan = planContext.effectivePlan;
     const lastResetDay = getDayKeyFromResetAt(data.lastResetAt);
     const shouldReset = lastResetDay !== currentDay;
     const dailyCount = shouldReset ? 0 : Math.max(Number(data.dailyCount) || 0, 0);
     const updates = {};
 
-    if (plan !== data.plan) {
-      updates.plan = plan;
+    if (planContext.basePlan !== data.plan) {
+      updates.plan = planContext.basePlan;
     }
     if (email && email !== normalizeEmail(data.email)) {
       updates.email = email;
@@ -222,6 +251,9 @@ async function loadUserProfile(req, res, next) {
     req.userProfile = {
       ref: userRef,
       ...buildPlanStatus(plan, dailyCount),
+      basePlan: planContext.basePlan,
+      testMode: planContext.testMode,
+      isTestMode: planContext.isTestMode,
       lastResetAt: shouldReset ? currentDay : lastResetDay || currentDay,
     };
     next();
@@ -242,12 +274,13 @@ async function enforceDailyUsageLimit(req, res, next) {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(userRef);
       const data = snap.data() || {};
-      const plan = getPlanKey(data.plan);
+      const planContext = resolvePlanContext(email, data);
+      const plan = planContext.effectivePlan;
       const config = PLAN_CONFIG[plan] || PLAN_CONFIG.free;
       const lastResetDay = getDayKeyFromResetAt(data.lastResetAt);
       const currentCount = lastResetDay === currentDay ? Math.max(Number(data.dailyCount) || 0, 0) : 0;
 
-      if (currentCount >= config.dailyLimit) {
+      if (config.dailyLimit !== null && currentCount >= config.dailyLimit) {
         throw new Error("PLAN_LIMIT");
       }
 
@@ -257,7 +290,7 @@ async function enforceDailyUsageLimit(req, res, next) {
         {
           uid,
           email,
-          plan,
+          plan: planContext.basePlan,
           dailyCount: nextCount,
           lastResetAt: currentDay,
           updatedAt: new Date().toISOString(),
@@ -268,6 +301,9 @@ async function enforceDailyUsageLimit(req, res, next) {
       nextStatus = {
         ref: userRef,
         ...buildPlanStatus(plan, nextCount),
+        basePlan: planContext.basePlan,
+        testMode: planContext.testMode,
+        isTestMode: planContext.isTestMode,
         lastResetAt: currentDay,
       };
     });
@@ -309,6 +345,9 @@ app.use(express.json());
 app.get("/me", requireAuth, allowlist, loadUserProfile, async (req, res) => {
   return res.json({
     plan: req.userProfile.plan,
+    basePlan: req.userProfile.basePlan,
+    testMode: req.userProfile.testMode,
+    isTestMode: req.userProfile.isTestMode,
     dailyCount: req.userProfile.dailyCount,
     lastResetAt: req.userProfile.lastResetAt,
     dailyLimit: req.userProfile.dailyLimit,
@@ -447,6 +486,9 @@ try {
 return res.json({
   ja: parsed.ja || "",
   plan: req.userProfile.plan,
+  basePlan: req.userProfile.basePlan,
+  testMode: req.userProfile.testMode,
+  isTestMode: req.userProfile.isTestMode,
   dailyCount: req.userProfile.dailyCount,
   lastResetAt: req.userProfile.lastResetAt,
   dailyLimit: req.userProfile.dailyLimit,
@@ -540,6 +582,9 @@ try {
       return res.json({
         en: parsed.en || "",
         plan: req.userProfile.plan,
+        basePlan: req.userProfile.basePlan,
+        testMode: req.userProfile.testMode,
+        isTestMode: req.userProfile.isTestMode,
         dailyCount: req.userProfile.dailyCount,
         lastResetAt: req.userProfile.lastResetAt,
         dailyLimit: req.userProfile.dailyLimit,

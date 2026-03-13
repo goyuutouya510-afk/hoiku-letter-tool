@@ -116,6 +116,19 @@ p.lead {
   background: #ffe7cf;
 }
 
+.copy-button {
+  width: auto;
+  padding: 8px 12px;
+  margin-left: auto;
+  background: #fff;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.copy-button:hover:not(:disabled) {
+  background: #f4f6fb;
+}
+
 .layout {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -233,6 +246,12 @@ button:disabled {
 
 .status.success {
   color: #2e7d32;
+}
+
+.copy-message {
+  min-height: 1.2em;
+  margin-top: 0;
+  margin-bottom: 8px;
 }
 
 .hidden {

@@ -4,6 +4,8 @@ export function createUI() {
     output: document.getElementById("output"),
     languageToggle: document.getElementById("languageToggle"),
     englishOption: document.getElementById("englishOption"),
+    copyBtn: document.getElementById("copyBtn"),
+    copyMessage: document.getElementById("copyMessage"),
     statusMessage: document.getElementById("statusMessage"),
     submitButton: document.getElementById("generateBtn"),
     loginBtn: document.getElementById("loginBtn"),
@@ -20,6 +22,9 @@ export function createUI() {
   let lastGenerated = null;
   let planStatus = {
     plan: "free",
+    basePlan: "free",
+    testMode: null,
+    isTestMode: false,
     dailyCount: 0,
     dailyLimit: 1,
     remainingCount: 1,
@@ -33,11 +38,17 @@ export function createUI() {
   };
 
   const updatePreview = () => {
-    if (!lastGenerated) return;
+    if (!lastGenerated) {
+      refs.copyBtn.disabled = true;
+      refs.copyMessage.textContent = "";
+      return;
+    }
     const language = refs.languageToggle.value;
+    const text = lastGenerated[language] || "選択した言語の文章がありません。";
     refs.output.classList.remove("empty-state");
-    refs.output.textContent =
-      lastGenerated[language] || "選択した言語の文章がありません。";
+    refs.output.textContent = text;
+    refs.copyBtn.disabled = !text || text === "選択した言語の文章がありません。";
+    refs.copyMessage.textContent = "";
   };
 
   const getPayload = () => {
@@ -60,15 +71,28 @@ export function createUI() {
 
   const getGenerated = () => lastGenerated;
 
+  const getCurrentOutputText = () => {
+    if (!lastGenerated) return "";
+    const language = refs.languageToggle.value;
+    return lastGenerated[language] || "";
+  };
+
+  const setCopyMessage = (text = "", type = "") => {
+    refs.copyMessage.textContent = text;
+    refs.copyMessage.className = `hint copy-message${type ? ` ${type}` : ""}`;
+  };
+
   const setPlanStatus = (nextStatus = {}) => {
     planStatus = {
       ...planStatus,
       ...nextStatus,
     };
 
-    refs.planLabel.textContent = `現在のプラン: ${planStatus.plan}`;
-    refs.usageLabel.textContent =
-      `本日の残り回数: ${planStatus.remainingCount}/${planStatus.dailyLimit}`;
+    refs.planLabel.textContent =
+      `現在のプラン: ${planStatus.plan}${planStatus.isTestMode ? " (test mode)" : ""}`;
+    refs.usageLabel.textContent = planStatus.dailyLimit === null
+      ? `本日の残り回数: 無制限`
+      : `本日の残り回数: ${planStatus.remainingCount}/${planStatus.dailyLimit}`;
 
     refs.lengthField.classList.toggle("hidden", !planStatus.supportsLength);
     refs.englishOption.hidden = !planStatus.supportsEnglish;
@@ -94,6 +118,8 @@ export function createUI() {
     getPayload,
     setGenerated,
     getGenerated,
+    getCurrentOutputText,
+    setCopyMessage,
     setPlanStatus,
     getPlanStatus,
   };

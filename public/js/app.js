@@ -4,6 +4,10 @@ import { createUI } from "./ui.js";
 
 const PLUS_FORM_URL = "https://docs.google.com/forms/d/1NzqTuhnk-jhkro0xLwPOVDjnrKMVGizzkJeQ6ZTFD4o/edit";
 
+function canGenerate(status) {
+  return status?.remainingCount === null || (status?.remainingCount ?? 0) > 0;
+}
+
 function requireIdToken() {
   return getIdTokenOrNull().then((token) => {
     if (!token) {
@@ -11,6 +15,27 @@ function requireIdToken() {
     }
     return token;
   });
+}
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "absolute";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+
+  if (!copied) {
+    throw new Error("コピーに失敗しました。");
+  }
 }
 
 async function handleSubmit(event, ui) {
@@ -28,7 +53,7 @@ async function handleSubmit(event, ui) {
     submitButton.textContent = "日本語生成中…";
     const jaData = await generateJapaneseLetter(payload, idToken);
     ui.setPlanStatus(jaData);
-    ui.refs.submitButton.disabled = jaData.remainingCount <= 0;
+    ui.refs.submitButton.disabled = !canGenerate(jaData);
 
     ui.setGenerated({
       ja: jaData.ja || jaData.text || "日本語の文章を取得できませんでした。",
@@ -46,7 +71,7 @@ async function handleSubmit(event, ui) {
     submitButton.textContent = "英語生成中…";
     const enData = await generateEnglishLetter(ui.getGenerated().ja, idToken);
     ui.setPlanStatus(enData);
-    ui.refs.submitButton.disabled = enData.remainingCount <= 0;
+    ui.refs.submitButton.disabled = !canGenerate(enData);
 
     ui.setGenerated({
       ...ui.getGenerated(),
@@ -58,7 +83,7 @@ async function handleSubmit(event, ui) {
     ui.setStatus(error.message || "エラーが発生しました。", "error");
   } finally {
     const token = await getIdTokenOrNull();
-    submitButton.disabled = !token || ui.getPlanStatus().remainingCount <= 0;
+    submitButton.disabled = !token || !canGenerate(ui.getPlanStatus());
     submitButton.textContent = "ChatGPTに作成してもらう";
   }
 }
@@ -69,11 +94,30 @@ ui.refs.plusPlanBtn.addEventListener("click", () => {
   window.open(PLUS_FORM_URL, "_blank", "noopener,noreferrer");
 });
 
+ui.refs.copyBtn.addEventListener("click", async () => {
+  const text = ui.getCurrentOutputText().trim();
+  if (!text) {
+    ui.setCopyMessage("コピーできる文章がありません。");
+    return;
+  }
+
+  try {
+    await copyText(text);
+    ui.setCopyMessage("コピーしました");
+  } catch (error) {
+    console.error(error);
+    ui.setCopyMessage(error.message || "コピーに失敗しました。");
+  }
+});
+
 async function refreshUserStatus() {
   const token = await getIdTokenOrNull();
   if (!token) {
     ui.setPlanStatus({
       plan: "free",
+      basePlan: "free",
+      testMode: null,
+      isTestMode: false,
       dailyCount: 0,
       dailyLimit: 1,
       remainingCount: 1,
@@ -86,7 +130,7 @@ async function refreshUserStatus() {
   try {
     const status = await fetchUserStatus(token);
     ui.setPlanStatus(status);
-    ui.refs.submitButton.disabled = status.remainingCount <= 0;
+    ui.refs.submitButton.disabled = !canGenerate(status);
   } catch (error) {
     console.error(error);
     ui.setStatus(error.message || "プラン情報の取得に失敗しました。", "error");
