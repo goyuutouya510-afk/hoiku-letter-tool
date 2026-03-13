@@ -2,6 +2,8 @@ import { initAuth, getIdTokenOrNull } from "./auth.js";
 import { fetchUserStatus, generateJapaneseLetter, generateEnglishLetter } from "./api.js";
 import { createUI } from "./ui.js";
 
+const PLUS_FORM_URL = "https://docs.google.com/forms/d/1NzqTuhnk-jhkro0xLwPOVDjnrKMVGizzkJeQ6ZTFD4o/edit";
+
 function requireIdToken() {
   return getIdTokenOrNull().then((token) => {
     if (!token) {
@@ -64,7 +66,7 @@ async function handleSubmit(event, ui) {
 const ui = createUI();
 
 ui.refs.plusPlanBtn.addEventListener("click", () => {
-  ui.setStatus("plusプラン申込導線は準備中です。近日公開予定です。", "info");
+  window.open(PLUS_FORM_URL, "_blank", "noopener,noreferrer");
 });
 
 async function refreshUserStatus() {
