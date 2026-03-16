@@ -156,9 +156,7 @@ function allowlist(req, res, next) {
   next();
 }
 
-// ====== 利用回数制限（Firestore版） ======
-const DAILY_LIMIT_PER_USER = 10;
-const DAILY_LIMIT_GLOBAL = 50;
+// ====== プラン別の利用回数制限 ======
 
 function getDayKeyJST() {
   const now = new Date();
