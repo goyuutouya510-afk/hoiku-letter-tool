@@ -409,33 +409,55 @@ app.post(
       const mainEvent = activity || "本日の活動";
       const observation = (notes || "").trim() || "ゆったりと友だちと関わっていました";
       const weatherText = (weather || "").trim() || "穏やかな気候";
-      const lengthInstruction = req.userProfile?.supportsLength
+      const lengthConfig = req.userProfile?.supportsLength
         ? {
-            short: "全体は短めにまとめる。",
-            normal: "全体は2〜3段落の標準的な長さにする。",
-            long: "やや詳しめに書くが、冗長にはしない。",
-          }[length] || "全体は2〜3段落の標準的な長さにする。"
-        : "全体は2〜3段落で、長くなりすぎない。";
+            short: {
+              charRange: "150〜200文字",
+              structure: "1段落で簡潔にまとめる。",
+              maxTokens: 220,
+            },
+            normal: {
+              charRange: "230〜300文字",
+              structure: "観察と遊びの様子を中心に、必要に応じて安全確認や家庭への一言を自然につなぐ。",
+              maxTokens: 380,
+            },
+            long: {
+              charRange: "380〜450文字",
+              structure:
+                "2段落構成にする。1段落目は観察・遊びの様子・安全確認、2段落目は家庭への一言を書く。",
+              maxTokens: 520,
+            },
+          }[length] || {
+            charRange: "230〜300文字",
+            structure: "観察と遊びの様子を中心に、必要に応じて安全確認や家庭への一言を自然につなぐ。",
+            maxTokens: 380,
+          }
+        : {
+            charRange: "150〜200文字",
+            structure: "1段落で簡潔にまとめる。",
+            maxTokens: 220,
+          };
 
    const messages = [
   {
     role: "system",
     content:
-      "あなたは現場経験のあるベテラン保育士です。保護者にわかりやすく寄り添う自然なお便り帳を書きます。",
+      "保育士が実際に観察した記録として、保護者に送る連絡帳の文章を作成してください。入力情報のみを使って自然な文章にまとめてください。",
   },
   {
     role: "user",
-    content: `以下の条件で作成してください。
-1 文章は今日の気候の描写から始める。
-2 園での様子から家庭への声かけへ自然につなげる。
-3 園児の呼称は常に「${childNames.honorific}」とする。
-4 観察キーワードは本文に自然に溶け込ませ、「様子メモ」という語は使わない。
-5 短く具体的に書き、抽象的な評価語（創造力・集中力・感心しました等）は多用しない。
-6 具体的な行動やしぐさを1つ以上含め、音や動きが想像できる表現を少し入れる。
-7 説明調にせず、その場を一緒に見ているような描写にする。
-8 文の長さを揃えすぎず、まとめすぎない。
-9 入力にない事実や会話は創作しない（セリフは入力に明示されている場合のみ可）。
-10 ${lengthInstruction}
+    content: `ルール
+・入力にない出来事や会話を作らない
+・会話文「」は禁止
+・誇張表現を使わない
+・比喩表現（〜のように、まるで〜）は禁止
+・事実ベースで書く
+・1〜2文は短い文にする
+・園児の呼称は常に「${childNames.honorific}」とする
+・文字数は${lengthConfig.charRange}を目安にし、その範囲にできるだけ近づける
+・${lengthConfig.structure}
+・「印象的でした」「お伝えしたいと思います」「見守っていただければと思います」「関係を深めていけると良いですね」「活動報告です」は使わない
+・保育士の連絡帳として、観察、遊びの様子、安全確認を優先して書く
 
 入力情報:
 - 日付: ${formattedDateJa}
@@ -459,8 +481,8 @@ const response = await fetch("https://api.openai.com/v1/chat/completions", {
   body: JSON.stringify({
     model: "gpt-4o-mini",
     messages,
-    temperature: 0.6,
-    max_tokens: 350,
+    temperature: 0.3,
+    max_tokens: lengthConfig.maxTokens,
   }),
 });
 
