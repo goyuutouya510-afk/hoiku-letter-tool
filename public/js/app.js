@@ -8,6 +8,20 @@ function canGenerate(status) {
   return status?.remainingCount === null || (status?.remainingCount ?? 0) > 0;
 }
 
+function scrollToGeneratedResult(ui) {
+  const target = ui?.refs?.output?.closest(".preview") || ui?.refs?.output;
+
+  if (target) {
+    requestAnimationFrame(() => {
+      const top = target.getBoundingClientRect().top + window.scrollY - 16;
+      window.scrollTo({
+        top: Math.max(top, 0),
+        behavior: "smooth",
+      });
+    });
+  }
+}
+
 function requireIdToken() {
   return getIdTokenOrNull().then((token) => {
     if (!token) {
@@ -59,6 +73,7 @@ async function handleSubmit(event, ui) {
       ja: jaData.ja || jaData.text || "日本語の文章を取得できませんでした。",
       en: jaData.supportsEnglish ? "英語を生成中…" : "plusプランで英語翻訳を利用できます。",
     });
+    scrollToGeneratedResult(ui);
     ui.setStatus(
       jaData.supportsEnglish ? "日本語ができました。英語を生成中…" : "日本語の生成が完了しました。",
       "success"
@@ -77,6 +92,7 @@ async function handleSubmit(event, ui) {
       ...ui.getGenerated(),
       en: enData.en || enData.text || "English version was not provided.",
     });
+    scrollToGeneratedResult(ui);
     ui.setStatus("生成が完了しました。", "success");
   } catch (error) {
     console.error(error);
