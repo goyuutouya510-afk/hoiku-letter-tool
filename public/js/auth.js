@@ -7,8 +7,9 @@ import {
   onAuthStateChanged,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
+// Firebase Web config is public client configuration. Do not place server-side secrets here.
 const firebaseConfig = {
-  apiKey: "AIzaSyA7AccAmKVEH9ZeCL2Uhnak0qV1lumKCrE",
+  apiKey: "AIzaSyD1bgwMp6e0Pqux4tEqqe0550XUdyFADTc",
   authDomain: "hoiku-letter-tool.firebaseapp.com",
   projectId: "hoiku-letter-tool",
   storageBucket: "hoiku-letter-tool.firebasestorage.app",
