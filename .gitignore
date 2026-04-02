@@ -4,10 +4,17 @@ firebase-debug.log*
 firebase-debug.*.log
 node_modules/
 functions/node_modules/
+.env
+.env.*
 *.local
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.pem
+*.p12
+credentials*.json
+service-account*.json
 serviceAccountKey.json
 functions/serviceAccountKey.json
+allowed_emails.txt

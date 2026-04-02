@@ -19,6 +19,11 @@ const PLAN_CONFIG = {
     supportsLength: false,
     supportsEnglish: false,
   },
+  test_plus: {
+    dailyLimit: 10,
+    supportsLength: true,
+    supportsEnglish: true,
+  },
   plus: {
     dailyLimit: 10,
     supportsLength: true,
@@ -77,7 +82,7 @@ function normalizeEmail(value) {
 }
 
 function getPlanKey(value) {
-  return value === "plus" ? "plus" : "free";
+  return ["free", "test_plus", "plus"].includes(value) ? value : "free";
 }
 
 function getTestModeKey(value) {
@@ -108,25 +113,53 @@ function parseEmailList(secretParam, secretName) {
     return [];
   }
 
+  const trimmedValue = rawValue.trim();
+
   try {
-    const parsed = JSON.parse(rawValue);
-    if (!Array.isArray(parsed)) {
-      throw new Error("Secret value must be a JSON array");
+    if (trimmedValue.startsWith("[")) {
+      const parsed = JSON.parse(trimmedValue);
+      if (!Array.isArray(parsed)) {
+        throw new Error("Secret value must be a JSON array");
+      }
+      return parsed
+        .map((email) => normalizeEmail(email))
+        .filter(Boolean);
     }
-    return parsed
-      .map((email) => normalizeEmail(email))
-      .filter(Boolean);
   } catch (error) {
-    logger.error(`${secretName} is not valid JSON array, trying fallback parsing`, error);
-    return rawValue
-      .split(/[\n,]/)
-      .map((email) => normalizeEmail(email.replace(/[[\]"]/g, "")))
-      .filter(Boolean);
+    logger.error(`${secretName} is not valid JSON array`, error);
   }
+
+  return trimmedValue
+    .split(/[\n,]/)
+    .map((email) => normalizeEmail(email.replace(/[[\]"]/g, "")))
+    .filter(Boolean);
 }
 
 function getEmailSet(secretParam, secretName) {
   return new Set(parseEmailList(secretParam, secretName));
+}
+
+function getAccessLists() {
+  return {
+    allowedSet: getEmailSet(ALLOWED_EMAILS_SECRET, "ALLOWED_EMAILS"),
+    adminSet: getEmailSet(ADMIN_EMAILS_SECRET, "ADMIN_EMAILS"),
+  };
+}
+
+function getDefaultPlanForEmail(email, currentPlan) {
+  const normalizedEmail = normalizeEmail(email);
+  const plan = getPlanKey(currentPlan);
+  const { allowedSet } = getAccessLists();
+
+  if (plan === "plus" || plan === "test_plus") {
+    return plan;
+  }
+
+  if (normalizedEmail && allowedSet.has(normalizedEmail)) {
+    return "test_plus";
+  }
+
+  return plan;
 }
 
 function buildPlanStatus(plan, dailyCount) {
@@ -145,8 +178,7 @@ function buildPlanStatus(plan, dailyCount) {
 
 function allowlist(req, res, next) {
   const email = normalizeEmail(req.user?.email);
-  const allowedSet = getEmailSet(ALLOWED_EMAILS_SECRET, "ALLOWED_EMAILS");
-  const adminSet = getEmailSet(ADMIN_EMAILS_SECRET, "ADMIN_EMAILS");
+  const { allowedSet, adminSet } = getAccessLists();
 
   if (!email || (!allowedSet.has(email) && !adminSet.has(email))) {
     return res.status(403).json({
@@ -204,7 +236,7 @@ async function loadUserProfile(req, res, next) {
     const snap = await userRef.get();
 
     if (!snap.exists) {
-      const plan = "free";
+      const plan = getDefaultPlanForEmail(email, "free");
       await userRef.set({
         uid,
         email,
@@ -217,21 +249,28 @@ async function loadUserProfile(req, res, next) {
       req.userProfile = {
         ref: userRef,
         ...buildPlanStatus(plan, 0),
+        basePlan: plan,
+        testMode: null,
+        isTestMode: false,
         lastResetAt: currentDay,
       };
       return next();
     }
 
     const data = snap.data() || {};
-    const planContext = resolvePlanContext(email, data);
-    const plan = planContext.effectivePlan;
+    const nextBasePlan = getDefaultPlanForEmail(email, data.plan);
+    const nextPlanContext = resolvePlanContext(email, {
+      ...data,
+      plan: nextBasePlan,
+    });
+    const plan = nextPlanContext.effectivePlan;
     const lastResetDay = getDayKeyFromResetAt(data.lastResetAt);
     const shouldReset = lastResetDay !== currentDay;
     const dailyCount = shouldReset ? 0 : Math.max(Number(data.dailyCount) || 0, 0);
     const updates = {};
 
-    if (planContext.basePlan !== data.plan) {
-      updates.plan = planContext.basePlan;
+    if (nextBasePlan !== data.plan) {
+      updates.plan = nextBasePlan;
     }
     if (email && email !== normalizeEmail(data.email)) {
       updates.email = email;
@@ -249,9 +288,9 @@ async function loadUserProfile(req, res, next) {
     req.userProfile = {
       ref: userRef,
       ...buildPlanStatus(plan, dailyCount),
-      basePlan: planContext.basePlan,
-      testMode: planContext.testMode,
-      isTestMode: planContext.isTestMode,
+      basePlan: nextBasePlan,
+      testMode: nextPlanContext.testMode,
+      isTestMode: nextPlanContext.isTestMode,
       lastResetAt: shouldReset ? currentDay : lastResetDay || currentDay,
     };
     next();
@@ -353,6 +392,42 @@ app.get("/me", requireAuth, allowlist, loadUserProfile, async (req, res) => {
     supportsLength: req.userProfile.supportsLength,
     supportsEnglish: req.userProfile.supportsEnglish,
   });
+});
+
+app.post("/activate-test-plus", requireAuth, allowlist, loadUserProfile, async (req, res) => {
+  try {
+    const userRef = req.userProfile?.ref || db.collection("users").doc(req.uid);
+    const currentPlan = req.userProfile?.basePlan || "free";
+    const nextPlan = currentPlan === "free" ? "test_plus" : currentPlan;
+    const currentDay = getDayKeyJST();
+    const currentCount = Math.max(Number(req.userProfile?.dailyCount) || 0, 0);
+
+    await userRef.set(
+      {
+        uid: req.uid,
+        email: normalizeEmail(req.user?.email),
+        plan: nextPlan,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+
+    const planContext = resolvePlanContext(req.user?.email, {
+      plan: nextPlan,
+      testMode: req.userProfile?.testMode,
+    });
+
+    return res.json({
+      ...buildPlanStatus(planContext.effectivePlan, currentCount),
+      basePlan: planContext.basePlan,
+      testMode: planContext.testMode,
+      isTestMode: planContext.isTestMode,
+      lastResetAt: req.userProfile?.lastResetAt || currentDay,
+    });
+  } catch (error) {
+    logger.error("activate-test-plus failed", error);
+    return res.status(500).json({ error: "test_plus の設定に失敗しました" });
+  }
 });
 
 app.post(

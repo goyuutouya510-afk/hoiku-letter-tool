@@ -65,10 +65,7 @@ p.lead {
 }
 
 .plan-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
+  display: block;
   margin: 0 auto 24px;
   padding: 16px 18px;
   border: 1px solid var(--border);
@@ -102,6 +99,10 @@ p.lead {
   color: var(--muted);
   font-size: 0.85rem;
   line-height: 1.4;
+}
+
+#plusPlanSection {
+  margin-top: 12px;
 }
 
 .secondary-button {
@@ -276,10 +277,5 @@ button:disabled {
 
   .layout {
     grid-template-columns: 1fr;
-  }
-
-  .plan-card {
-    flex-direction: column;
-    align-items: stretch;
   }
 }

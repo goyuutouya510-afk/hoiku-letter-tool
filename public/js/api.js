@@ -39,6 +39,16 @@ export async function fetchUserStatus(idToken) {
   return response.json();
 }
 
+export async function activateTestPlus(idToken) {
+  const response = await postWithAuth(`${getApiBase()}/activate-test-plus`, {}, idToken);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `test_plus の設定に失敗しました (${response.status})`);
+  }
+
+  return response.json();
+}
+
 export async function generateJapaneseLetter(payload, idToken) {
   const response = await postWithAuth(`${getApiBase()}/hoiku-letter?lang=ja`, payload, idToken);
   if (!response.ok) {

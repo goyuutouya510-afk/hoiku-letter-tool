@@ -1,8 +1,34 @@
 import { initAuth, getIdTokenOrNull } from "./auth.js";
-import { fetchUserStatus, generateJapaneseLetter, generateEnglishLetter } from "./api.js";
+import {
+  activateTestPlus,
+  fetchUserStatus,
+  generateJapaneseLetter,
+  generateEnglishLetter,
+} from "./api.js";
 import { createUI } from "./ui.js";
 
 const PLUS_FORM_URL = "https://docs.google.com/forms/d/1NzqTuhnk-jhkro0xLwPOVDjnrKMVGizzkJeQ6ZTFD4o/edit";
+const IS_TEST_PLUS_URL = new URLSearchParams(window.location.search).get("test") === "plus";
+const TEST_PLUS_INTENT_KEY = "hoiku_letter_test_plus_intent";
+
+if (IS_TEST_PLUS_URL) {
+  localStorage.setItem(TEST_PLUS_INTENT_KEY, "1");
+}
+
+function shouldActivateTestPlus() {
+  return IS_TEST_PLUS_URL || localStorage.getItem(TEST_PLUS_INTENT_KEY) === "1";
+}
+
+function clearTestPlusIntent() {
+  localStorage.removeItem(TEST_PLUS_INTENT_KEY);
+
+  const url = new URL(window.location.href);
+  if (url.searchParams.get("test") === "plus") {
+    url.searchParams.delete("test");
+    const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+    window.history.replaceState({}, "", nextUrl || "/");
+  }
+}
 
 function canGenerate(status) {
   return status?.remainingCount === null || (status?.remainingCount ?? 0) > 0;
@@ -144,7 +170,13 @@ async function refreshUserStatus() {
   }
 
   try {
-    const status = await fetchUserStatus(token);
+    const wantsTestPlus = shouldActivateTestPlus();
+    const status = wantsTestPlus
+      ? await activateTestPlus(token)
+      : await fetchUserStatus(token);
+    if (wantsTestPlus) {
+      clearTestPlusIntent();
+    }
     ui.setPlanStatus(status);
     ui.refs.submitButton.disabled = !canGenerate(status);
   } catch (error) {

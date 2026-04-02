@@ -13,6 +13,7 @@ export function createUI() {
     userLabel: document.getElementById("userLabel"),
     planLabel: document.getElementById("planLabel"),
     usageLabel: document.getElementById("usageLabel"),
+    plusPlanSection: document.getElementById("plusPlanSection"),
     plusPlanBtn: document.getElementById("plusPlanBtn"),
     lengthField: document.getElementById("lengthField"),
     lengthSelect: document.getElementById("length"),
@@ -93,6 +94,8 @@ export function createUI() {
     refs.usageLabel.textContent = planStatus.dailyLimit === null
       ? `本日の残り回数: 無制限`
       : `本日の残り回数: ${planStatus.remainingCount}/${planStatus.dailyLimit}`;
+    refs.plusPlanSection.style.display =
+      planStatus.plan === "free" ? "block" : "none";
 
     refs.lengthField.classList.toggle("hidden", !planStatus.supportsLength);
     refs.englishOption.hidden = !planStatus.supportsEnglish;
@@ -103,7 +106,7 @@ export function createUI() {
     }
 
     refs.featureHint.textContent = planStatus.supportsEnglish
-      ? "plusプランでは英語翻訳と文章量選択を利用できます。"
+      ? "plus相当プランでは英語翻訳と文章量選択を利用できます。"
       : "freeプランでは日本語生成のみ利用できます。";
   };
 
