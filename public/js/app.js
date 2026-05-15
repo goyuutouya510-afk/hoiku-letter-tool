@@ -1,13 +1,15 @@
 import { initAuth, getIdTokenOrNull } from "./auth.js";
 import {
   activateTestPlus,
+  createCustomerPortalSession,
+  createCheckoutSession,
   fetchUserStatus,
   generateJapaneseLetter,
   generateEnglishLetter,
+  submitFeedback,
 } from "./api.js";
 import { createUI } from "./ui.js";
 
-const PLUS_FORM_URL = "https://docs.google.com/forms/d/1NzqTuhnk-jhkro0xLwPOVDjnrKMVGizzkJeQ6ZTFD4o/edit";
 const IS_TEST_PLUS_URL = new URLSearchParams(window.location.search).get("test") === "plus";
 const TEST_PLUS_INTENT_KEY = "hoiku_letter_test_plus_intent";
 
@@ -89,6 +91,7 @@ async function handleSubmit(event, ui) {
   try {
     const idToken = await requireIdToken();
     const payload = ui.getPayload();
+    ui.rememberFormHistory();
 
     submitButton.textContent = "日本語生成中…";
     const jaData = await generateJapaneseLetter(payload, idToken);
@@ -97,7 +100,7 @@ async function handleSubmit(event, ui) {
 
     ui.setGenerated({
       ja: jaData.ja || jaData.text || "日本語の文章を取得できませんでした。",
-      en: jaData.supportsEnglish ? "英語を生成中…" : "plusプランで英語翻訳を利用できます。",
+      en: jaData.supportsEnglish ? "英語を生成中…" : "plus / test_plus で英語翻訳を利用できます。",
     });
     scrollToGeneratedResult(ui);
     ui.setStatus(
@@ -122,7 +125,7 @@ async function handleSubmit(event, ui) {
     ui.setStatus("生成が完了しました。", "success");
   } catch (error) {
     console.error(error);
-    ui.setStatus(error.message || "エラーが発生しました。", "error");
+    await refreshStatusAfterError(ui, error);
   } finally {
     const token = await getIdTokenOrNull();
     submitButton.disabled = !token || !canGenerate(ui.getPlanStatus());
@@ -130,10 +133,85 @@ async function handleSubmit(event, ui) {
   }
 }
 
+async function handleFeedbackSubmit(event, ui) {
+  event.preventDefault();
+
+  const submitButton = ui.refs.feedbackSubmitBtn;
+  submitButton.disabled = true;
+  ui.setFeedbackStatus("送信中です…", "info");
+
+  try {
+    const idToken = await requireIdToken();
+    const payload = ui.getFeedbackPayload();
+    await submitFeedback(payload, idToken);
+    ui.resetFeedbackForm();
+    ui.setFeedbackStatus("送信ありがとうございました。", "success");
+  } catch (error) {
+    console.error(error);
+    ui.setFeedbackStatus(error.message || "感想送信に失敗しました。", "error");
+  } finally {
+    const token = await getIdTokenOrNull();
+    submitButton.disabled = !token;
+  }
+}
+
 const ui = createUI();
 
-ui.refs.plusPlanBtn.addEventListener("click", () => {
-  window.open(PLUS_FORM_URL, "_blank", "noopener,noreferrer");
+async function handlePlusPlanClick() {
+  ui.showPlusPlanInfo();
+}
+
+async function handlePlusPlanPurchaseClick() {
+  const button = ui.refs.plusPlanPurchaseBtn;
+  button.disabled = true;
+  ui.setStatus("決済画面を準備しています…", "info");
+
+  try {
+    const idToken = await requireIdToken();
+    const data = await createCheckoutSession(idToken);
+    if (!data?.url) {
+      throw new Error("決済画面のURLを取得できませんでした。");
+    }
+    window.location.href = data.url;
+  } catch (error) {
+    console.error(error);
+    ui.setStatus(
+      error.message || "決済画面を開けませんでした。時間をおいて再度お試しください。",
+      "error"
+    );
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function handleManagePlanClick() {
+  const button = ui.refs.managePlanBtn;
+  button.disabled = true;
+  ui.setStatus("プラン管理画面を準備しています…", "info");
+
+  try {
+    const idToken = await requireIdToken();
+    const data = await createCustomerPortalSession(idToken);
+    if (!data?.url) {
+      throw new Error("プラン管理画面のURLを取得できませんでした。");
+    }
+    window.location.href = data.url;
+  } catch (error) {
+    console.error(error);
+    ui.setStatus(
+      "プラン管理画面を開けませんでした。時間をおいて再度お試しください。",
+      "error"
+    );
+  } finally {
+    button.disabled = false;
+  }
+}
+
+ui.refs.plusPlanBtn.addEventListener("click", handlePlusPlanClick);
+ui.refs.plusPlanPurchaseBtn.addEventListener("click", handlePlusPlanPurchaseClick);
+ui.refs.managePlanBtn.addEventListener("click", handleManagePlanClick);
+ui.refs.plusPlanCloseBtn.addEventListener("click", () => {
+  ui.hidePlusPlanInfo();
 });
 
 ui.refs.copyBtn.addEventListener("click", async () => {
@@ -163,9 +241,10 @@ async function refreshUserStatus() {
       dailyCount: 0,
       dailyLimit: 1,
       remainingCount: 1,
-      supportsLength: false,
+      supportsLength: true,
       supportsEnglish: false,
     });
+    ui.refs.submitButton.disabled = true;
     return;
   }
 
@@ -181,8 +260,26 @@ async function refreshUserStatus() {
     ui.refs.submitButton.disabled = !canGenerate(status);
   } catch (error) {
     console.error(error);
+    ui.refs.submitButton.disabled = false;
     ui.setStatus(error.message || "プラン情報の取得に失敗しました。", "error");
   }
+}
+
+async function refreshStatusAfterError(ui, error) {
+  try {
+    await refreshUserStatus();
+    if (ui.getPlanStatus().plan === "free" && ui.getPlanStatus().remainingCount === 0) {
+      ui.setStatus(
+        "本日の無料生成（1回）を使い切りました。プラスプラン（月500円）をご検討ください。",
+        "error"
+      );
+      return;
+    }
+  } catch (refreshError) {
+    console.error(refreshError);
+  }
+
+  ui.setStatus(error.message || "エラーが発生しました。", "error");
 }
 
 initAuth({
@@ -190,13 +287,18 @@ initAuth({
   logoutBtn: ui.refs.logoutBtn,
   userLabel: ui.refs.userLabel,
   generateBtn: ui.refs.submitButton,
-  onUserChanged: () => {
+  onUserChanged: (user) => {
+    ui.setAuthState(Boolean(user));
     refreshUserStatus();
   },
 });
 
 ui.refs.form.addEventListener("submit", (event) => {
   handleSubmit(event, ui);
+});
+
+ui.refs.feedbackForm.addEventListener("submit", (event) => {
+  handleFeedbackSubmit(event, ui);
 });
 
 refreshUserStatus();

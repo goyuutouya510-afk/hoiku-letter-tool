@@ -10,7 +10,7 @@
   <div class="page">
     <header>
       <h1>保育お便り帳ジェネレーター</h1>
-      <p class="lead">キーワードを入力すると、ChatGPTが日々のお便りを日本語と英語で作成します。</p>
+      <p class="lead">必要な項目だけを入力すると、保護者向けのお便り帳文を日本語と英語で作成します。</p>
     </header>
     <div id="authBar" class="auth-bar">
       <button id="loginBtn" class="auth-button" type="button">Googleでログイン</button>
@@ -21,49 +21,147 @@
       <div class="plan-meta">
         <p id="planLabel" class="plan-text">現在のプラン: free</p>
         <p id="usageLabel" class="plan-subtext">本日の残り回数: 1/1</p>
-        <p class="plan-note">plusプランは現在テスト販売中です。お申し込み後に利用方法をご案内します。</p>
+        <p class="plan-note">フリーは1日1回まで。プラスプラン（月500円）で、毎日のお便り作成がもっとラクになります。</p>
+      </div>
+      <div id="managePlanSection" class="manage-plan hidden">
+        <p class="manage-plan-label">プラン管理</p>
+        <button id="managePlanBtn" class="plain-button manage-plan-button" type="button">サブスクリプションを管理する</button>
       </div>
       <div id="plusPlanSection">
-        <button id="plusPlanBtn" class="secondary-button" type="button">plusプランに申し込む</button>
+        <div id="limitNotice" class="upgrade-notice hidden">
+          <p class="upgrade-title">本日の無料生成（1回）を使い切りました。</p>
+          <p>プラスプラン（月500円）にすると、1日30回まで生成でき、英語翻訳も使えます。</p>
+        </div>
+        <div class="pricing-grid" aria-label="料金プラン">
+          <div class="price-card">
+            <p class="price-name">フリー</p>
+            <p class="price-value">0円</p>
+            <p class="price-feature">1日1回・日本語生成のみ</p>
+          </div>
+          <div class="price-card price-card-plus">
+            <p class="price-name">プラス</p>
+            <p class="price-value">500円/月</p>
+            <p class="price-feature">1日30回・英語翻訳</p>
+          </div>
+        </div>
+        <button id="plusPlanBtn" class="secondary-button" type="button">プラスプランの内容を見る</button>
+        <div id="plusPlanInfoPanel" class="plus-info-panel hidden" aria-live="polite">
+          <div class="plus-info-header">
+            <p class="plus-info-title">プラスプラン（月500円）</p>
+            <button id="plusPlanCloseBtn" class="plain-button" type="button">閉じる</button>
+          </div>
+          <p class="plus-info-text">
+            1日30回までお便りを作成でき、英語翻訳も利用できます。
+            いつでも解約でき、解約後も契約期間終了まではそのまま使えます。
+          </p>
+          <button id="plusPlanPurchaseBtn" class="secondary-button" type="button">プラスプランに申し込む</button>
+        </div>
       </div>
     </section>
 
     <div class="layout">
       <form id="noteForm" aria-label="お便り入力フォーム">
-        <h2>キーワード入力</h2>
+        <h2>通常入力</h2>
         <div class="field">
-          <label for="date">日付</label>
-          <input type="date" id="date" name="date" required />
-        </div>
-        <div class="field">
-          <label for="weather">今日の気候</label>
-          <input type="text" id="weather" name="weather" placeholder="例：穏やかな晴れ／雨上がりの涼しさ" />
+          <label for="name">名前</label>
+          <input type="text" id="name" name="name" list="nameHistory" placeholder="例：たろうくん" required />
+          <datalist id="nameHistory"></datalist>
         </div>
         <div class="field">
-          <label for="group">所属（クラス・園名など）</label>
-          <input type="text" id="group" name="group" placeholder="例：さくら組" />
+          <span class="field-label">年齢</span>
+          <div id="ageGroupField" class="chip-group" role="radiogroup" aria-label="年齢">
+            <button type="button" class="chip-button" data-age-group="0">0</button>
+            <button type="button" class="chip-button" data-age-group="1">1</button>
+            <button type="button" class="chip-button" data-age-group="2">2</button>
+            <button type="button" class="chip-button" data-age-group="年少">年少</button>
+            <button type="button" class="chip-button" data-age-group="年中">年中</button>
+            <button type="button" class="chip-button" data-age-group="年長">年長</button>
+          </div>
+          <input type="hidden" id="ageGroup" name="ageGroup" />
         </div>
         <div class="field">
-          <label for="name">園児の名前</label>
-          <input type="text" id="name" name="name" placeholder="例：たろうくん" />
+          <span class="field-label">様子タグ</span>
+          <p class="hint inline-hint">未選択でも生成できます。複数選択できます。</p>
+          <div class="tag-categories" aria-label="様子タグ">
+            <section class="tag-category">
+              <h3>😊 感情</h3>
+              <div class="chip-group">
+                <button type="button" class="tag-chip" data-tag="😊 元気">😊 元気</button>
+                <button type="button" class="tag-chip" data-tag="😄 笑顔">😄 笑顔</button>
+                <button type="button" class="tag-chip" data-tag="😢 泣いた">😢 泣いた</button>
+                <button type="button" class="tag-chip" data-tag="😌 落ち着いていた">😌 落ち着いていた</button>
+              </div>
+            </section>
+            <section class="tag-category">
+              <h3>😴 睡眠</h3>
+              <div class="chip-group">
+                <button type="button" class="tag-chip" data-tag="😴 よく眠れた">😴 よく眠れた</button>
+                <button type="button" class="tag-chip" data-tag="💤 午睡短め">💤 午睡短め</button>
+                <button type="button" class="tag-chip" data-tag="😳 眠そうだった">😳 眠そうだった</button>
+              </div>
+            </section>
+            <section class="tag-category">
+              <h3>🍚 食事</h3>
+              <div class="chip-group">
+                <button type="button" class="tag-chip" data-tag="🍚 よく食べた">🍚 よく食べた</button>
+                <button type="button" class="tag-chip" data-tag="🥄 少食">🥄 少食</button>
+                <button type="button" class="tag-chip" data-tag="🥛 水分をとれた">🥛 水分をとれた</button>
+              </div>
+            </section>
+            <section class="tag-category">
+              <h3>🩹 けが・体調</h3>
+              <div class="chip-group">
+                <button type="button" class="tag-chip" data-tag="🩹 すり傷">🩹 すり傷</button>
+                <button type="button" class="tag-chip" data-tag="🤧 鼻水">🤧 鼻水</button>
+                <button type="button" class="tag-chip" data-tag="😷 咳">😷 咳</button>
+                <button type="button" class="tag-chip" data-tag="🌡️ 体調注意">🌡️ 体調注意</button>
+              </div>
+            </section>
+          </div>
+          <input type="hidden" id="selectedTags" name="selectedTags" />
         </div>
         <div class="field">
-          <label for="event">イベント・活動</label>
-          <input type="text" id="event" name="event" placeholder="例：園庭での泥遊び" />
+          <label for="activity">活動</label>
+          <input
+            type="text"
+            id="activity"
+            name="activity"
+            placeholder="例：園庭でおにごっこをしました／製作でこいのぼりを作りました／室内でブロック遊びをしました"
+            required
+          />
         </div>
-        <div class="field">
-          <label for="notes">園児の様子・キーワード</label>
-          <textarea id="notes" name="notes" placeholder="例：集中して砂山づくり／友だちと協力" required></textarea>
+        <div id="lengthField" class="field">
+          <span class="field-label">文章量</span>
+          <div id="lengthModeField" class="chip-group" role="radiogroup" aria-label="文章量">
+            <button type="button" class="chip-button is-selected" data-length-mode="short">短め</button>
+            <button type="button" class="chip-button" data-length-mode="normal">ふつう</button>
+          </div>
+          <input type="hidden" id="length" name="length" value="short" />
         </div>
-        <div id="lengthField" class="field hidden">
-          <label for="length">文章量</label>
-          <select id="length" name="length">
-            <option value="short">短め</option>
-            <option value="normal" selected>標準</option>
-            <option value="long">長め</option>
-          </select>
-        </div>
-        <button id="generateBtn" type="submit" disabled>ChatGPTに作成してもらう</button>
+        <details class="detail-panel">
+          <summary>詳細設定</summary>
+          <div class="detail-panel-body">
+            <div class="field">
+              <label for="date">日付</label>
+              <input type="date" id="date" name="date" required />
+            </div>
+            <div class="field">
+              <label for="className">組</label>
+              <input type="text" id="className" name="className" list="classHistory" placeholder="例：さくら組" />
+              <datalist id="classHistory"></datalist>
+            </div>
+            <div class="field">
+              <span class="field-label">トーン</span>
+              <div id="toneField" class="chip-group" role="radiogroup" aria-label="トーン">
+                <button type="button" class="chip-button" data-tone="formal">丁寧</button>
+                <button type="button" class="chip-button is-selected" data-tone="gentle">やさしい</button>
+                <button type="button" class="chip-button" data-tone="friendly">フレンドリー</button>
+              </div>
+              <input type="hidden" id="tone" name="tone" value="gentle" />
+            </div>
+          </div>
+        </details>
+        <button id="generateBtn" class="primary-submit" type="submit" disabled>ChatGPTに作成してもらう</button>
 
         <p id="statusMessage" aria-live="polite" class="hint status"></p>
       </form>
@@ -79,11 +177,48 @@
           </select>
           <button id="copyBtn" class="copy-button" type="button" disabled>コピー</button>
         </div>
-        <p id="featureHint" class="hint">freeプランでは日本語生成のみ利用できます。</p>
+        <p id="featureHint" class="hint">日本語生成と各入力機能は利用できます。英語翻訳は plus / test_plus で利用できます。</p>
         <p id="copyMessage" class="hint copy-message" aria-live="polite"></p>
         <div id="output" class="empty-state">左のフォームからキーワードを入力し、ChatGPTに作成を依頼してください。</div>
+        <section class="feedback-panel" aria-labelledby="feedbackTitle">
+          <div class="feedback-header">
+            <h2 id="feedbackTitle">感想回収</h2>
+            <p class="hint feedback-note">全てのプランで利用できます。感想送信は生成回数を消費しません。</p>
+          </div>
+          <form id="feedbackForm" class="feedback-form">
+            <div class="field">
+              <label for="feedbackRating">評価</label>
+              <select id="feedbackRating" name="rating">
+                <option value="">選択しない</option>
+                <option value="5">5</option>
+                <option value="4">4</option>
+                <option value="3">3</option>
+                <option value="2">2</option>
+                <option value="1">1</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="feedbackText">感想本文</label>
+              <textarea id="feedbackText" name="feedbackText" placeholder="使ってみた感想があれば教えてください"></textarea>
+            </div>
+            <div class="field">
+              <label for="improvementRequest">改善要望</label>
+              <textarea id="improvementRequest" name="improvementRequest" placeholder="改善してほしい点があれば教えてください"></textarea>
+            </div>
+            <button id="feedbackSubmitBtn" type="submit" class="secondary-button">感想を送信</button>
+            <p id="feedbackStatusMessage" aria-live="polite" class="hint status"></p>
+          </form>
+        </section>
       </section>
     </div>
+
+    <footer class="site-footer" aria-label="リーガルリンク">
+      <nav class="legal-nav">
+        <a href="tokushoho.html">特定商取引法に基づく表記</a>
+        <a href="terms.html">利用規約</a>
+        <a href="privacy.html">プライバシーポリシー</a>
+      </nav>
+    </footer>
   </div>
 
   <script type="module" src="js/app.js"></script>

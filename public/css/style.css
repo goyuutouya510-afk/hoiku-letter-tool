@@ -3,6 +3,7 @@
   font-family: "Hiragino Sans", "Noto Sans JP", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --accent: #ff9f43;
   --accent-dark: #e07000;
+  --accent-soft: #fff4e8;
   --bg: #f5f5fb;
   --card-bg: #fff;
   --text: #1b1f3b;
@@ -105,6 +106,129 @@ p.lead {
   margin-top: 12px;
 }
 
+.manage-plan {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.manage-plan-label {
+  margin: 0 0 8px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.manage-plan-button {
+  width: auto;
+}
+
+.upgrade-notice {
+  margin-bottom: 14px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #fff7ed;
+  border: 1px solid #ffd2a7;
+  color: var(--text);
+}
+
+.upgrade-notice p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.upgrade-title {
+  font-weight: 700;
+  color: var(--accent-dark);
+}
+
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.price-card {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fafaff;
+}
+
+.price-card-plus {
+  background: #fff9f2;
+  border-color: #ffd2a7;
+}
+
+.price-name,
+.price-value,
+.price-feature {
+  margin: 0;
+}
+
+.price-name {
+  font-weight: 700;
+}
+
+.price-value {
+  margin-top: 4px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent-dark);
+}
+
+.price-feature {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.plus-info-panel {
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid #ffd2a7;
+}
+
+.plus-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plus-info-title {
+  margin: 0;
+  font-weight: 700;
+  color: var(--accent-dark);
+}
+
+.plus-info-text {
+  margin: 10px 0 12px;
+  color: var(--text);
+  line-height: 1.7;
+}
+
+.plain-button {
+  width: auto;
+  padding: 6px 10px;
+  background: #f4f6fb;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+
+.plain-button:hover:not(:disabled) {
+  background: #eceff8;
+}
+
+.disabled-action {
+  opacity: 0.72;
+}
+
 .secondary-button {
   width: auto;
   padding: 10px 14px;
@@ -179,10 +303,16 @@ textarea {
   margin-bottom: 16px;
 }
 
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
 button {
   background: var(--accent);
   color: #fff;
-  border: none;
+  border: 1px solid transparent;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s ease;
@@ -199,9 +329,111 @@ button:disabled {
 
 .controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   align-items: center;
   margin-bottom: 16px;
+}
+
+.chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chip-button,
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 0;
+  padding: 7px 11px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  border-radius: 999px;
+  font-size: 0.92rem;
+  line-height: 1.2;
+  pointer-events: auto;
+}
+
+.chip-button:hover:not(:disabled),
+.tag-chip:hover:not(:disabled) {
+  background: #f8f9ff;
+}
+
+.chip-button.is-selected,
+.tag-chip.is-selected {
+  background: var(--accent-soft);
+  border-color: #ffd2a7;
+  color: var(--accent-dark);
+}
+
+.inline-hint {
+  margin: 0 0 10px;
+}
+
+.tag-categories {
+  display: grid;
+  gap: 12px;
+}
+
+.tag-category {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fafaff;
+}
+
+.tag-category h3 {
+  margin: 0 0 10px;
+  font-size: 0.98rem;
+}
+
+.detail-panel {
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #fcfcff;
+}
+
+.detail-panel summary {
+  padding: 12px 16px;
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+
+.detail-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.detail-panel summary::after {
+  content: "＋";
+  float: right;
+  color: var(--muted);
+}
+
+.detail-panel[open] summary::after {
+  content: "－";
+}
+
+.detail-panel-body {
+  padding: 0 16px 14px;
+}
+
+.primary-submit {
+  padding: 11px 16px;
+  border-radius: 14px;
+}
+
+#noteForm .field {
+  margin-bottom: 14px;
+}
+
+#noteForm .hint {
+  margin-top: 4px;
 }
 
 .badge {
@@ -255,6 +487,55 @@ button:disabled {
   margin-bottom: 8px;
 }
 
+.feedback-panel {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.feedback-header {
+  margin-bottom: 12px;
+}
+
+.feedback-header h2 {
+  margin-bottom: 6px;
+}
+
+.feedback-note {
+  margin: 0;
+}
+
+.feedback-form textarea {
+  min-height: 90px;
+}
+
+.preview .field {
+  margin-bottom: 14px;
+}
+
+.site-footer {
+  margin-top: 28px;
+  padding: 18px 0 8px;
+}
+
+.legal-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px 18px;
+}
+
+.legal-nav a {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.legal-nav a:hover {
+  color: var(--accent-dark);
+  text-decoration: underline;
+}
+
 .hidden {
   display: none;
 }
@@ -277,5 +558,30 @@ button:disabled {
 
   .layout {
     grid-template-columns: 1fr;
+  }
+
+  .pricing-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .controls {
+    align-items: stretch;
+  }
+
+  .copy-button {
+    margin-left: 0;
+  }
+
+  .legal-nav {
+    justify-content: flex-start;
+  }
+
+  .chip-group {
+    gap: 8px;
+  }
+
+  .chip-button,
+  .tag-chip {
+    padding: 9px 12px;
   }
 }

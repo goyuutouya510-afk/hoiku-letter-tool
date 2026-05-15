@@ -49,6 +49,30 @@ export async function activateTestPlus(idToken) {
   return response.json();
 }
 
+export async function createCheckoutSession(idToken) {
+  const response = await postWithAuth(`${getApiBase()}/create-checkout-session`, {}, idToken);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `決済画面の作成に失敗しました (${response.status})`);
+  }
+
+  return response.json();
+}
+
+export async function createCustomerPortalSession(idToken) {
+  const response = await postWithAuth(
+    `${getApiBase()}/create-customer-portal-session`,
+    {},
+    idToken
+  );
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `プラン管理画面の作成に失敗しました (${response.status})`);
+  }
+
+  return response.json();
+}
+
 export async function generateJapaneseLetter(payload, idToken) {
   const response = await postWithAuth(`${getApiBase()}/hoiku-letter?lang=ja`, payload, idToken);
   if (!response.ok) {
@@ -69,6 +93,16 @@ export async function generateEnglishLetter(jaText, idToken) {
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.error || `英語生成エラー (${response.status})`);
+  }
+
+  return response.json();
+}
+
+export async function submitFeedback(payload, idToken) {
+  const response = await postWithAuth(`${getApiBase()}/feedback`, payload, idToken);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `感想送信エラー (${response.status})`);
   }
 
   return response.json();
